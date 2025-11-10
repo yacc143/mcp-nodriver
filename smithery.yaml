@@ -9,5 +9,5 @@ startCommand:
   commandFunction:
     # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
     |-
-    (config) => ({ command: 'mcp-server-undetected-chromedriver', args: [], env: {} })
+    (config) => ({ command: 'mcp-server-nodriver', args: [], env: {} })
   exampleConfig: {}

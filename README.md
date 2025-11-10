@@ -1,28 +1,30 @@
-# MCP-Undetected-Chromedriver
+# MCP-Nodriver
 
 [![smithery badge](https://smithery.ai/badge/@dragons96/mcp-undetected-chromedriver)](https://smithery.ai/server/@dragons96/mcp-undetected-chromedriver)
 
-An MCP service built on undetected-chromedriver, providing a comprehensive interface for automating Chrome browser control while bypassing anti-bot detection.
+An MCP service built on nodriver, providing a comprehensive interface for automating Chrome browser control while bypassing anti-bot detection.
 
 [中文文档](README_ZH.md)
+
+> **Note:** The Chinese documentation and some Chinese comments in the code have been maintained through automatic translation during the migration from undetected-chromedriver to nodriver. I apologize for any translation inaccuracies - the alternative would have been to remove them completely, as I don't speak Chinese. Native Chinese speakers are welcome to submit corrections via pull requests.
 
 ## Installation
 
 
-To install MCP-Undetected-Chromedriver for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@dragons96/mcp-undetected-chromedriver):
+To install MCP-Nodriver for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@dragons96/mcp-undetected-chromedriver):
 
 ```bash
 npx -y @smithery/cli install @dragons96/mcp-undetected-chromedriver --client claude
 ```
 
-## Configuration to use Undetected Chromedriver Server
+## Configuration to use Nodriver Server
 
-Here's the Claude Desktop configuration to use the Undetected-chromedriver server:
+Here's the Claude Desktop configuration to use the Nodriver server:
 
 ```json
 {
   "mcpServers": {
-    "mcp-undetected-chromedriver": {
+    "mcp-nodriver": {
       "command": "npx",
       "args": [
         "-y",
@@ -59,13 +61,29 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
+> **Note for users in mainland China:** The PyPI mirror configuration for `https://pypi.tuna.tsinghua.edu.cn/simple` has been removed from the project configuration, as it should only be used by users in mainland China. If you need faster package downloads, you can configure it globally on your system:
+>
+> For pip:
+> ```bash
+> pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+> ```
+>
+> For uv, add the following to your global `~/.config/uv/uv.toml` (Linux/macOS) or `%APPDATA%\uv\uv.toml` (Windows):
+> ```toml
+> [[tool.uv.index]]
+> url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+> default = true
+> ```
+>
+> This approach allows you to configure the TUNA mirror based on your installation environment, so your Python installation will automatically prefer the faster proxy without affecting other users.
+
 ## Project Introduction
 
-MCP-Undetected-Chromedriver is an MCP (Multi Channel Protocol) service that wraps the functionality of the undetected-chromedriver library into a series of easy-to-use APIs. This project is particularly suitable for scenarios that require bypassing modern website anti-bot detection mechanisms in automated testing, data scraping, or web automation scripts.
+MCP-Nodriver is an MCP (Multi Channel Protocol) service that wraps the functionality of the nodriver library into a series of easy-to-use APIs. This project is particularly suitable for scenarios that require bypassing modern website anti-bot detection mechanisms in automated testing, data scraping, or web automation scripts.
 
 ### Key Features
 
-- Based on undetected-chromedriver, effectively bypassing website anti-bot detection
+- Based on nodriver, effectively bypassing website anti-bot detection
 - Provides rich browser operation API interfaces
 - Supports screenshots, PDF export, and other functionalities
 - Supports complex page interaction operations such as clicking, form filling, dragging, etc.
@@ -84,7 +102,7 @@ MCP-Undetected-Chromedriver is an MCP (Multi Channel Protocol) service that wrap
 ### Starting the Service
 
 ```bash
-mcp-server-undetected-chromedriver
+mcp-server-nodriver
 ```
 
 ### Available APIs
@@ -115,7 +133,7 @@ from mcp.client import Client
 
 # Create MCP client
 client = Client()
-client.start("undetected-chromedriver-mcp-server")
+client.start("nodriver-mcp-server")
 
 # Navigate to website
 response = client.call("browser_navigate", {"url": "https://example.com"})
@@ -135,7 +153,7 @@ client.call("browser_close")
 
 ## How It Works
 
-This service uses the undetected-chromedriver library to create a specialized Chrome browser instance that effectively evades common anti-bot detection mechanisms. The service wraps these features through the MCP protocol, providing an easy-to-use API interface that makes automated testing and web scraping more convenient.
+This service uses the nodriver library to create a specialized Chrome browser instance that effectively evades common anti-bot detection mechanisms. The service wraps these features through the MCP protocol, providing an easy-to-use API interface that makes automated testing and web scraping more convenient.
 
 ## License
 
@@ -147,9 +165,9 @@ Bug reports and feature requests are welcome on the GitHub Issues page. If you w
 
 ## FAQ
 
-**Q: Why choose undetected-chromedriver instead of the standard selenium webdriver?**
+**Q: Why choose nodriver instead of the standard selenium webdriver?**
 
-A: undetected-chromedriver is specifically designed to bypass anti-bot detection mechanisms of modern websites, such as Cloudflare, Distil Networks, etc., making it more reliable for data scraping and automated testing scenarios.
+A: nodriver is specifically designed to bypass anti-bot detection mechanisms of modern websites, such as Cloudflare, Distil Networks, etc., making it more reliable for data scraping and automated testing scenarios. It's a modern, async-first library that doesn't require chromedriver management.
 
 **Q: How does the service handle browser instances?**
 

@@ -18,4 +18,4 @@ COPY . /app
 RUN pip install --no-cache-dir .
 
 # Default entrypoint for MCP server
-ENTRYPOINT ["mcp-server-undetected-chromedriver"]
+ENTRYPOINT ["mcp-server-nodriver"]

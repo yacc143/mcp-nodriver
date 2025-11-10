@@ -6,36 +6,24 @@ from dataclasses import dataclass
 from mcp.server.fastmcp import FastMCP
 from mcp import types
 from mcp.types import TextContent
-from webdriver_manager.core import constants
 from typing import Callable, Coroutine, Any
-
-
-constants.DEFAULT_USER_HOME_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "chromedriver")
-
-from webdriver_manager.chrome import ChromeDriverManager
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.print_page_options import PrintOptions
+import nodriver as uc
 
 
 class Global:
-    webdriver = None
+    browser = None
 
 
 async def reset_browser_state():
-    if Global.webdriver:
-        Global.webdriver.quit()
-        Global.webdriver = None
+    if Global.browser:
+        await Global.browser.stop()
+        Global.browser = None
 
 
 async def ensure_browser(config: dict | None = None):
-    if not Global.webdriver:
-        Global.webdriver = uc.Chrome(
-            driver_executable_path=ChromeDriverManager().install()
-        )
-    return Global.webdriver
+    if not Global.browser:
+        Global.browser = await uc.start()
+    return Global.browser
 
 
 async def create_success_response(message: str | list[str]) -> types.CallToolResult:
@@ -56,7 +44,7 @@ async def create_error_response(message: str) -> types.CallToolResult:
 
 @dataclass
 class ToolContext:
-    webdriver: uc.Chrome | None = None
+    browser: uc.Browser | None = None
 
 
 class Tool:
@@ -64,10 +52,10 @@ class Tool:
     async def safe_execute(
             self,
             context: ToolContext,
-            handler: Callable[[uc.Chrome], Coroutine[Any, Any, types.CallToolResult]],
+            handler: Callable[[uc.Browser], Coroutine[Any, Any, types.CallToolResult]],
     ) -> types.CallToolResult:
         try:
-            return await handler(context.webdriver)
+            return await handler(context.browser)
         except AssertionError as error:
             return await create_error_response(f"Params error: {str(error)}")
         except Exception as error:
@@ -78,7 +66,7 @@ tool = Tool()
 
 
 mcp = FastMCP(
-    "undetected-chromedriver-mcp-server",
+    "nodriver-mcp-server",
 )
 
 
@@ -93,14 +81,13 @@ async def browser_navigate(url: str, timeout: int = 30000):
 
     assert url, "URL is required"
 
-    async def navigate_handler(driver: uc.Chrome):
+    async def navigate_handler(browser: uc.Browser):
         print(f"Navigating to {url}")
-        driver.set_page_load_timeout(timeout)
-        driver.get(url)
+        tab = await browser.get(url)
         return await create_success_response(f"Navigated to {url}")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), navigate_handler
+        ToolContext(browser=await ensure_browser()), navigate_handler
     )
 
 
@@ -123,7 +110,7 @@ async def browser_screenshot(
     """
     name = name or "screenshot"
 
-    async def screenshot_handler(driver: uc.Chrome):
+    async def screenshot_handler(browser: uc.Browser):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
         filename = f"{name}-{timestamp}.png"
         download_dir = downloadsDir or DEFAULT_DOWNLOAD_PATH
@@ -131,20 +118,25 @@ async def browser_screenshot(
         os.makedirs(download_dir, exist_ok=True)
 
         output_path = os.path.join(download_dir, filename)
-        driver.save_screenshot(output_path)
+
+        # Get the main tab
+        tab = browser.main_tab
+        await tab.save_screenshot(output_path)
 
         messages = [f"Screenshot saved to: {os.path.relpath(output_path, os.getcwd())}"]
 
         if storeBase64:
-            base64 = driver.get_screenshot_as_base64()
-            SCREENSHOTS[name] = base64
+            # Read the saved screenshot and convert to base64
+            with open(output_path, 'rb') as f:
+                screenshot_base64 = base64.b64encode(f.read()).decode('utf-8')
+            SCREENSHOTS[name] = screenshot_base64
             # todo: notifications/resources/list_changed
             messages.append(f"Screenshot also stored in memory with name: {name}")
 
         return await create_success_response(messages)
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), screenshot_handler
+        ToolContext(browser=await ensure_browser()), screenshot_handler
     )
 
 
@@ -159,12 +151,14 @@ async def browser_click(
     """
     assert selector, "Selector is required"
 
-    async def click_handler(driver: uc.Chrome):
-        driver.find_element(By.CSS_SELECTOR, selector).click()
+    async def click_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        element = await tab.find(selector)
+        await element.click()
         return await create_success_response(f"Clicked element: {selector}")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), click_handler
+        ToolContext(browser=await ensure_browser()), click_handler
     )
 
 
@@ -182,17 +176,21 @@ async def browser_iframe_click(
     assert iframeSelector, "Iframe selector is required"
     assert selector, "Selector is required"
 
-    async def iframe_click_handler(driver: uc.Chrome):
-        iframe = driver.find_element(By.CSS_SELECTOR, iframeSelector)
-        driver.switch_to.frame(iframe)
-        driver.find_element(By.CSS_SELECTOR, selector).click()
-        driver.switch_to.default_content()
+    async def iframe_click_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        # In nodriver, we need to get the iframe element and its content document
+        iframe_element = await tab.find(iframeSelector)
+        # Get the frame's content
+        frame = await iframe_element.content_document
+        # Find and click the element within the iframe
+        element = await frame.find(selector)
+        await element.click()
         return await create_success_response(
             f"Clicked element {selector} inside iframe {iframeSelector}"
         )
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), iframe_click_handler
+        ToolContext(browser=await ensure_browser()), iframe_click_handler
     )
 
 
@@ -210,12 +208,14 @@ async def browser_fill(
     assert selector, "Selector is required"
     assert value, "Value is required"
 
-    async def fill_handler(driver: uc.Chrome):
-        driver.find_element(By.CSS_SELECTOR, selector).send_keys(value)
+    async def fill_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        element = await tab.find(selector)
+        await element.send_keys(value)
         return await create_success_response(f"Filled {selector} with: {value}")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), fill_handler
+        ToolContext(browser=await ensure_browser()), fill_handler
     )
 
 
@@ -233,13 +233,25 @@ async def browser_select(
     assert selector, "Selector is required"
     assert value, "Value is required"
 
-    async def select_handler(driver: uc.Chrome):
-        select = Select(driver.find_element(By.CSS_SELECTOR, selector))
-        select.select_by_value(value)
-        return await create_success_response(f"Selected {selector} with: {value}")
+    async def select_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        # Use JavaScript to set the select value in nodriver
+        script = f"""
+        const select = document.querySelector('{selector}');
+        if (select) {{
+            select.value = '{value}';
+            select.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            return true;
+        }}
+        return false;
+        """
+        result = await tab.evaluate(script)
+        if result:
+            return await create_success_response(f"Selected {selector} with: {value}")
+        raise Exception(f"Could not find select element: {selector}")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), select_handler
+        ToolContext(browser=await ensure_browser()), select_handler
     )
 
 
@@ -254,13 +266,14 @@ async def browser_hover(
     """
     assert selector, "Selector is required"
 
-    async def hover_handler(driver: uc.Chrome):
-        element = driver.find_element(By.CSS_SELECTOR, selector)
-        ActionChains(driver).move_to_element(element).perform()
+    async def hover_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        element = await tab.find(selector)
+        await element.mouse_move()
         return await create_success_response(f"Hovered over {selector}")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), hover_handler
+        ToolContext(browser=await ensure_browser()), hover_handler
     )
 
 
@@ -275,18 +288,20 @@ async def browser_evalute(
     """
     assert script, "Script is required"
 
-    async def evaluate_handler(driver: uc.Chrome):
+    async def evaluate_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        result = await tab.evaluate(script)
         return await create_success_response(
             [
                 "Executed script:",
                 f"{script}",
                 "Result:",
-                f"{driver.execute_script(script)}",
+                f"{result}",
             ]
         )
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), evaluate_handler
+        ToolContext(browser=await ensure_browser()), evaluate_handler
     )
 
 
@@ -301,14 +316,15 @@ async def browser_close():
 async def browser_get_visible_text():
     """Get the visible text of the current page"""
 
-    async def get_visible_text_handler(driver: uc.Chrome):
-        # 使用JavaScript获取页面中所有可见文本内容
+    async def get_visible_text_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        # Use JavaScript to get all visible text content
         script = """
         return Array.from(document.body.querySelectorAll('*'))
             .filter(el => {
                 const style = window.getComputedStyle(el);
-                return !!(el.textContent.trim()) && 
-                       style.display !== 'none' && 
+                return !!(el.textContent.trim()) &&
+                       style.display !== 'none' &&
                        style.visibility !== 'hidden' &&
                        style.opacity !== '0';
             })
@@ -316,11 +332,11 @@ async def browser_get_visible_text():
             .filter(text => text)
             .join('\\n');
         """
-        visible_text = driver.execute_script(script)
+        visible_text = await tab.evaluate(script)
         return await create_success_response(visible_text)
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), get_visible_text_handler
+        ToolContext(browser=await ensure_browser()), get_visible_text_handler
     )
 
 
@@ -328,11 +344,13 @@ async def browser_get_visible_text():
 async def browser_get_visible_html():
     """Get the HTML of the current page"""
 
-    async def get_visible_html_handler(driver: uc.Chrome):
-        return await create_success_response(driver.page_source)
+    async def get_visible_html_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        html = await tab.get_content()
+        return await create_success_response(html)
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), get_visible_html_handler
+        ToolContext(browser=await ensure_browser()), get_visible_html_handler
     )
 
 
@@ -340,12 +358,13 @@ async def browser_get_visible_html():
 async def browser_go_back():
     """Navigate back in browser history"""
 
-    async def go_back_handler(driver: uc.Chrome):
-        driver.back()
+    async def go_back_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        await tab.back()
         return await create_success_response("Navigated back in browser history")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), go_back_handler
+        ToolContext(browser=await ensure_browser()), go_back_handler
     )
 
 
@@ -353,12 +372,13 @@ async def browser_go_back():
 async def browser_go_forward():
     """Navigate forward in browser history"""
 
-    async def go_forward_handler(driver: uc.Chrome):
-        driver.forward()
+    async def go_forward_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        await tab.forward()
         return await create_success_response("Navigated forward in browser history")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), go_forward_handler
+        ToolContext(browser=await ensure_browser()), go_forward_handler
     )
 
 
@@ -376,16 +396,27 @@ async def browser_drag(
     assert sourceSelector, "Source selector is required"
     assert targetSelector, "Target selector is required"
 
-    async def drag_handler(driver: uc.Chrome):
-        source = driver.find_element(By.CSS_SELECTOR, sourceSelector)
-        target = driver.find_element(By.CSS_SELECTOR, targetSelector)
-        ActionChains(driver).drag_and_drop(source, target).perform()
+    async def drag_handler(browser: uc.Browser):
+        tab = browser.main_tab
+        source = await tab.find(sourceSelector)
+        target = await tab.find(targetSelector)
+
+        # Get coordinates for drag and drop
+        source_box = await source.get_box_model()
+        target_box = await target.get_box_model()
+
+        # Perform drag and drop using mouse actions
+        await source.mouse_move()
+        await tab.mouse_down()
+        await target.mouse_move()
+        await tab.mouse_up()
+
         return await create_success_response(
             f"Dragged {sourceSelector} to {targetSelector}"
         )
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), drag_handler
+        ToolContext(browser=await ensure_browser()), drag_handler
     )
 
 
@@ -402,57 +433,20 @@ async def browser_press_key(
     """
     assert key, "Key is required"
 
-    async def press_key_handler(driver: uc.Chrome):
-        # 如果提供了选择器，先找到元素并聚焦
+    async def press_key_handler(browser: uc.Browser):
+        tab = browser.main_tab
+
+        # If selector is provided, find and focus the element
         if selector:
-            element = driver.find_element(By.CSS_SELECTOR, selector)
-            element.click()  # 点击元素以确保聚焦
+            element = await tab.find(selector)
+            await element.click()  # Click to focus
 
-        # 处理特殊键
-        special_keys = {
-            'Enter': '\ue007',
-            'Tab': '\ue004',
-            'Escape': '\ue00c',
-            'Space': '\ue00d',
-            'Backspace': '\ue003',
-            'Delete': '\ue017',
-            'ArrowUp': '\ue013',
-            'ArrowDown': '\ue015',
-            'ArrowLeft': '\ue012',
-            'ArrowRight': '\ue014',
-            'PageUp': '\ue00e',
-            'PageDown': '\ue00f',
-            'Home': '\ue011',
-            'End': '\ue010',
-            'F1': '\ue031',
-            'F2': '\ue032',
-            'F3': '\ue033',
-            'F4': '\ue034',
-            'F5': '\ue035',
-            'F6': '\ue036',
-            'F7': '\ue037',
-            'F8': '\ue038',
-            'F9': '\ue039',
-            'F10': '\ue03a',
-            'F11': '\ue03b',
-            'F12': '\ue03c',
-        }
+        # Map key names to nodriver key codes
+        # nodriver uses similar key names as Chrome DevTools Protocol
+        key_to_send = key
 
-        # 映射按键
-        key_to_send = special_keys.get(key, key)
-
-        # 创建ActionChains对象
-        actions = ActionChains(driver)
-
-        # 发送按键
-        if selector:
-            element = driver.find_element(By.CSS_SELECTOR, selector)
-            actions.send_keys_to_element(element, key_to_send)
-        else:
-            actions.send_keys(key_to_send)
-
-        # 执行操作
-        actions.perform()
+        # Send the key press
+        await tab.send_keys(key_to_send)
 
         if selector:
             return await create_success_response(f"Pressed key '{key}' on element '{selector}'")
@@ -460,7 +454,7 @@ async def browser_press_key(
             return await create_success_response(f"Pressed key '{key}'")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), press_key_handler
+        ToolContext(browser=await ensure_browser()), press_key_handler
     )
 
 
@@ -485,32 +479,37 @@ async def browser_save_as_pdf(
 
     margin = margin or {"top": 0, "right": 0, "bottom": 0, "left": 0}
 
-    async def save_as_pdf_handler(driver: uc.Chrome):
-        # 确保输出路径存在
+    async def save_as_pdf_handler(browser: uc.Browser):
+        # Ensure output path exists
         os.makedirs(outputPath, exist_ok=True)
 
-        # 构建完整文件路径
+        # Build full file path
         full_path = os.path.join(outputPath, filename)
 
-        # 设置打印选项
-        print_options = PrintOptions()
-        print_options.orientation  = 'portrait'
-        print_options.scale = 1.0
-        print_options.background = printBackground
-        print_options.margin_left = margin.get('left', 0)
-        print_options.margin_right = margin.get('right', 0)
-        print_options.margin_top = margin.get('top', 0)
-        print_options.margin_bottom = margin.get('bottom', 0)
+        tab = browser.main_tab
 
-        # 保存PDF文件
-        data = driver.print_page(print_options)
+        # Use CDP to print to PDF
+        pdf_data = await tab.send(
+            "Page.printToPDF",
+            {
+                "printBackground": printBackground,
+                "paperWidth": 8.27 if format == "A4" else 8.5,  # inches
+                "paperHeight": 11.69 if format == "A4" else 11,  # inches
+                "marginTop": margin.get('top', 0),
+                "marginRight": margin.get('right', 0),
+                "marginBottom": margin.get('bottom', 0),
+                "marginLeft": margin.get('left', 0),
+            }
+        )
+
+        # Decode and save PDF
         with open(full_path, 'wb') as f:
-            f.write(base64.b64decode(data))
+            f.write(base64.b64decode(pdf_data['data']))
 
         return await create_success_response(f"Saved page as PDF to {full_path}")
 
     return await tool.safe_execute(
-        ToolContext(webdriver=await ensure_browser()), save_as_pdf_handler
+        ToolContext(browser=await ensure_browser()), save_as_pdf_handler
     )
 
 

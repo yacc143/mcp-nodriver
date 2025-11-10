@@ -1,23 +1,23 @@
-# MCP-Undetected-Chromedriver
+# MCP-Nodriver
 
-基于undetected-chromedriver构建的MCP服务，提供一套完整的接口用于自动化控制Chrome浏览器，绕过反爬虫检测。
+基于nodriver构建的MCP服务，提供一套完整的接口用于自动化控制Chrome浏览器，绕过反爬虫检测。
 
 ## 安装
 
-使用 [Smithery](https://smithery.ai/server/@dragons96/mcp-undetected-chromedriver) 为claude安装mcp-undetected-chromedriver服务:
+使用 [Smithery](https://smithery.ai/server/@dragons96/mcp-undetected-chromedriver) 为claude安装mcp-nodriver服务:
 
 ```bash
 npx -y @smithery/cli install @dragons96/mcp-undetected-chromedriver --client claude
 ```
 
-## 配置使用Undetected Chromedriver服务
+## 配置使用Nodriver服务
 
 calude配置实例:
 
 ```json
 {
   "mcpServers": {
-    "mcp-undetected-chromedriver": {
+    "mcp-nodriver": {
       "command": "npx",
       "args": [
         "-y",
@@ -54,14 +54,30 @@ source .venv/bin/activate
 uv pip install -e .
 ```
 
+> **中国大陆用户注意：** 项目配置中已移除清华大学 TUNA PyPI 镜像源 (`https://pypi.tuna.tsinghua.edu.cn/simple`) 的配置，因为它仅适用于中国大陆用户。如果您需要更快的包下载速度，可以在系统中全局配置：
+>
+> 对于 pip：
+> ```bash
+> pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+> ```
+>
+> 对于 uv，在全局配置文件 `~/.config/uv/uv.toml` (Linux/macOS) 或 `%APPDATA%\uv\uv.toml` (Windows) 中添加以下内容：
+> ```toml
+> [[tool.uv.index]]
+> url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+> default = true
+> ```
+>
+> 这种方式允许您根据安装环境配置 TUNA 镜像源，使您的 Python 安装自动使用更快的代理，而不会影响其他用户。
+
 
 ## 项目介绍
 
-MCP-Undetected-Chromedriver 是一个MCP (Multi Channel Protocol) 服务，它将undetected-chromedriver库的功能封装为一系列易于使用的API。该项目适合需要在自动化测试、数据抓取或网页自动化脚本中绕过现代网站反爬虫检测机制的场景。
+MCP-Nodriver 是一个MCP (Multi Channel Protocol) 服务，它将nodriver库的功能封装为一系列易于使用的API。该项目适合需要在自动化测试、数据抓取或网页自动化脚本中绕过现代网站反爬虫检测机制的场景。
 
 ### 主要特性
 
-- 基于undetected-chromedriver，有效绕过网站的反爬虫检测
+- 基于nodriver，有效绕过网站的反爬虫检测
 - 提供丰富的浏览器操作API接口
 - 支持屏幕截图、PDF导出等功能
 - 支持复杂的页面交互操作，如点击、填写表单、拖拽等
@@ -87,13 +103,13 @@ git clone git@github.com:dragons96/mcp-undetected-chromedriver.git
    ```json
    {
      "mcpServers": {
-       "undetected-chromedriver-mcp-server": {
+       "nodriver-mcp-server": {
          "command": "uv",
          "args": [
            "--directory",
-           "path/to/mcp-undetected-chromedriver",
+           "path/to/mcp-nodriver",
            "run",
-           "mcp-server-undetected-chromedriver"
+           "mcp-server-nodriver"
          ]
        }
      }
@@ -105,7 +121,7 @@ git clone git@github.com:dragons96/mcp-undetected-chromedriver.git
 ### 启动服务
 
 ```bash
-mcp-server-undetected-chromedriver
+mcp-server-nodriver
 ```
 
 ### 可用API
@@ -136,7 +152,7 @@ from mcp.client import Client
 
 # 创建MCP客户端
 client = Client()
-client.start("undetected-chromedriver-mcp-server")
+client.start("nodriver-mcp-server")
 
 # 导航到网站
 response = client.call("browser_navigate", {"url": "https://example.com"})
@@ -156,7 +172,7 @@ client.call("browser_close")
 
 ## 工作原理
 
-本服务使用undetected-chromedriver库创建一个特殊的Chrome浏览器实例，该实例能有效规避常见的反爬虫检测机制。服务通过MCP协议包装这些功能，提供了一套易于使用的API接口，使自动化测试和网页爬取变得更加便捷。
+本服务使用nodriver库创建一个特殊的Chrome浏览器实例，该实例能有效规避常见的反爬虫检测机制。服务通过MCP协议包装这些功能，提供了一套易于使用的API接口，使自动化测试和网页爬取变得更加便捷。
 
 ## 许可证
 
@@ -168,9 +184,9 @@ client.call("browser_close")
 
 ## 常见问题
 
-**Q: 为什么选择undetected-chromedriver而不是标准的selenium webdriver?**
+**Q: 为什么选择nodriver而不是标准的selenium webdriver?**
 
-A: undetected-chromedriver专门设计用于绕过现代网站的反爬虫检测机制，如Cloudflare、Distil Networks等，使其在数据抓取和自动化测试场景中更加可靠。
+A: nodriver专门设计用于绕过现代网站的反爬虫检测机制，如Cloudflare、Distil Networks等，使其在数据抓取和自动化测试场景中更加可靠。它是一个现代的、异步优先的库，无需管理chromedriver。
 
 **Q: 服务如何处理浏览器实例?**
 
